@@ -1,0 +1,28 @@
+FROM python:3.11-slim AS base
+
+RUN mkdir -p /elan-cache /lean-packages /app
+
+ENV ELAN_HOME="/elan-cache"
+ENV PATH="/elan-cache/bin:${PATH}"
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /elan-cache
+
+# Builder layer
+FROM base AS lean-builder
+
+ARG LEAN_VERSION=4.19.0
+
+RUN curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y
+RUN elan default $LEAN_VERSION
+
+# elan will download LEAN lazily as the following step.
+RUN lean --version
+
+VOLUME ["/elan-cache"]
+
+# https://stackoverflow.com/questions/2935183/bash-infinite-sleep-infinite-blocking
+CMD ["python", "-c", "'while 1: import ctypes; ctypes.CDLL(None).pause()'"]
