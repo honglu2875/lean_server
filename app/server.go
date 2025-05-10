@@ -114,8 +114,6 @@ func (s *REPLServer) ExecuteCommand(command []byte, timeout float64) ([]byte, er
 	}
 
 	// Read the response from the REPL
-	// Note: The README indicates commands are separated by blank lines
-	// and responses are JSON
 	var responseBuilder strings.Builder
 	var inResponse bool
 	var inString bool
