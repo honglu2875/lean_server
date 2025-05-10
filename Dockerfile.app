@@ -21,4 +21,4 @@ COPY go.mod app /app
 
 
 # Assume the elan-cache directory is mounted
-CMD ["go", "run", "app/server.go"]
+CMD ["go", "run", "server.go"]
