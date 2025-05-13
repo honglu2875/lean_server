@@ -4,6 +4,7 @@ ARG REPL_TAG=v4.19.0
 ARG GO_VERSION=1.24.3
 ENV ELAN_HOME="/elan-cache"
 ENV PATH="/elan-cache/bin:${PATH}"
+ENV REPL_PATH="/app/repl"
 
 RUN apt-get update && apt-get install -y \
     git \
