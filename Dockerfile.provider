@@ -7,6 +7,7 @@ ENV PATH="/elan-cache/bin:${PATH}"
 
 RUN apt-get update && apt-get install -y \
     curl \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /elan-cache
@@ -24,5 +25,11 @@ RUN lean --version
 
 VOLUME ["/elan-cache"]
 
+RUN printf '#include <unistd.h>\nint main(){for(;;)pause();}' > pause.c
+RUN gcc -o pause pause.c
+RUN rm pause.c
+RUN apt-get uninstall -y gcc
+
 # https://stackoverflow.com/questions/2935183/bash-infinite-sleep-infinite-blocking
-CMD ["python", "-c", "'while 1: import ctypes; ctypes.CDLL(None).pause()'"]
+#CMD ["python", "-c", "'while 1: import ctypes; ctypes.CDLL(None).pause()'"]
+CMD ["./pause"]
