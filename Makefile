@@ -14,7 +14,7 @@ run: clean
 	@echo "Running a LEAN provider server..."
 	sudo docker run -d --name lean-provider lean-provider
 	@echo "Running a LEAN REPL server..."
-	sudo docker run -it --rm -p 8080:8080 --volumes-from lean-provider lean-repl
+	sudo docker run -it --rm -p 8080:8080 --volumes-from lean-provider --name lean-repl lean-repl
 
 clean:
 	@echo "Cleaning up previous LEAN provider containers..."
