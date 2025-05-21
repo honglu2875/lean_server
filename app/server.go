@@ -251,6 +251,20 @@ func main() {
 		}
 	})
 
+	// Health check for /healthz endpoint
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		// Check if the REPL server is running
+		if err := replServer.cmd.Process.Signal(os.Interrupt); err != nil {
+			http.Error(w, "REPL server is not running", http.StatusInternalServerError)
+			return
+		}
+		// Respond with a 200 OK status
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("OK")); err != nil {
+			log.Printf("Error writing health check response: %v", err)
+		}
+	})
+
 	// Start the server
 	serverAddr := fmt.Sprintf(":%d", port)
 	fmt.Printf("Server starting on http://localhost%s\n", serverAddr)
