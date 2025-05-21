@@ -18,7 +18,7 @@ run: clean
 
 clean:
 	@echo "Cleaning up previous LEAN provider containers..."
-	@bash -c "sudo docker container stop lean-provider 2&>1 /dev/null || true"
-	@bash -c "sudo docker container rm -f lean-provider 2&>1 /dev/null || true"
-	@bash -c "sudo docker container stop lean-repl 2&>1 /dev/null || true"
-	@bash -c "sudo docker container rm -f lean-repl 2&>1 /dev/null || true"
+	@bash -c "sudo docker container stop lean-provider 2>&1 /dev/null || true"
+	@bash -c "sudo docker container rm -f lean-provider 2>&1 /dev/null || true"
+	@bash -c "sudo docker container stop lean-repl 2>&1 /dev/null || true"
+	@bash -c "sudo docker container rm -f lean-repl 2>&1 /dev/null || true"
