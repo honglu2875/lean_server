@@ -102,11 +102,31 @@ func depthDiff(line string, inString bool) (int, bool) {
 	return count, inString
 }
 
+func (s *REPLServer) FlushStdout() error {
+	// Flush the stdout scanner to ensure all output is read
+	if err := s.stdout.Err(); err != nil {
+		return fmt.Errorf("error flushing stdout: %w", err)
+	}
+	// Print any remaining output
+	for s.stdout.Scan() {
+		line := s.stdout.Text()
+		if len(line) > 0 {
+			fmt.Println(line) // Print to console or log
+		}
+	}
+	return nil
+}
+
 // ExecuteCommand sends a command to the REPL and returns the response
 func (s *REPLServer) ExecuteCommand(command []byte, timeout float64) ([]byte, error) {
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+
+	// Flush stdout before sending a new command
+	if err := s.FlushStdout(); err != nil {
+		return nil, fmt.Errorf("failed to flush stdout: %w", err)
+	}
 
 	// Send the command to the REPL followed by a blank line
 	if _, err := s.stdin.Write(append(command, '\n', '\n')); err != nil {
@@ -161,6 +181,10 @@ func (s *REPLServer) ExecuteCommand(command []byte, timeout float64) ([]byte, er
 
 // CleanUp properly terminates the REPL process
 func (s *REPLServer) CleanUp() error {
+	// First, flush any remaining output
+	if err := s.FlushStdout(); err != nil {
+		return fmt.Errorf("failed to flush stdout during cleanup: %w", err)
+	}
 	// Close stdin to signal EOF to the process
 	if err := s.stdin.Close(); err != nil {
 		return fmt.Errorf("failed to close stdin: %w", err)
@@ -253,6 +277,11 @@ func main() {
 
 	// Health check for /healthz endpoint
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		// Flush stdout to ensure no pending output
+		if err := replServer.FlushStdout(); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to flush REPL stdout: %v", err), http.StatusInternalServerError)
+			return
+		}
 		// Check if the REPL server is running
 		if err := replServer.cmd.Process.Signal(os.Interrupt); err != nil {
 			http.Error(w, "REPL server is not running", http.StatusInternalServerError)
