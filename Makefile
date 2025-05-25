@@ -1,4 +1,4 @@
-PHONY: build
+PHONY: build run rund clean
 
 # This pins the versions of everything. Change if you need an upgrade.
 LEAN_VERSION = 4.19.0
@@ -15,6 +15,12 @@ run: clean
 	sudo docker run -d --name lean-provider lean-provider
 	@echo "Running a LEAN REPL server..."
 	sudo docker run -it --rm -p 8080:8080 --volumes-from lean-provider --name lean-repl lean-repl
+
+rund: clean
+	@echo "Running a LEAN provider server..."
+	sudo docker run -d --name lean-provider lean-provider
+	@echo "Running a LEAN REPL server..."
+	sudo docker run -it --rm -d -p 8080:8080 --volumes-from lean-provider --name lean-repl lean-repl
 
 clean:
 	@echo "Cleaning up previous LEAN provider containers..."
