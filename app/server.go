@@ -40,7 +40,16 @@ type REPLServer struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout *bufio.Scanner
+	stderr *bufio.Scanner
 	mutex  sync.Mutex // Protect concurrent access to REPL
+}
+
+type REPLDeathError struct {
+	Err error
+}
+
+func (e *REPLDeathError) Error() string {
+	return fmt.Sprintf("REPL process died unexpectedly: %v", e.Err)
 }
 
 // NewREPLServer creates and starts a new Lean REPL process
@@ -56,15 +65,20 @@ func NewREPLServer() (*REPLServer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stdin pipe: %w", err)
 	}
-
 	// Get stdout pipe to read from the process
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
+	// Get stderr pipe to read from the process
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
 
 	// Create a scanner to read lines from stdout
 	scanner := bufio.NewScanner(stdout)
+	err_scanner := bufio.NewScanner(stderr)
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
@@ -75,6 +89,7 @@ func NewREPLServer() (*REPLServer, error) {
 		cmd:    cmd,
 		stdin:  stdin,
 		stdout: scanner,
+		stderr: err_scanner,
 		mutex:  sync.Mutex{},
 	}, nil
 }
@@ -123,11 +138,24 @@ func (s *REPLServer) ExecuteCommand(command []byte, timeout float64) ([]byte, er
 
 	// Send the command to the REPL followed by a blank line
 	if _, err := s.stdin.Write(append(command, '\n', '\n')); err != nil {
+		// if it's broken pipe, we close the process and return a REPLDeathError
+		if strings.Contains(err.Error(), "broken pipe") {
+			if err := s.cmd.Wait(); err != nil {
+				return nil, &REPLDeathError{
+					Err: fmt.Errorf("REPL process exited with error: %w", err),
+				}
+			} else {
+				return nil, &REPLDeathError{
+					Err: fmt.Errorf("REPL process exited without error, but broken pipe occurred"),
+				}
+			}
+		}
 		return nil, fmt.Errorf("failed to write to REPL: %w", err)
 	}
 
 	// Read the response from the REPL
 	var responseBuilder strings.Builder
+	var errorBuilder strings.Builder
 	var inResponse bool
 	var inString bool
 	var bracketCount int
@@ -168,26 +196,43 @@ func (s *REPLServer) ExecuteCommand(command []byte, timeout float64) ([]byte, er
 		return nil, fmt.Errorf("error reading from REPL: %w", err)
 	}
 
-	// Return the response
-	return []byte(responseBuilder.String()), nil
+	if responseBuilder.Len() == 0 {
+		// If we didn't get any response, assume there is something on stderr
+		for s.stderr.Scan() {
+			errLine := s.stderr.Text()
+			if len(errLine) == 0 {
+				break
+			}
+			errorBuilder.WriteString(errLine)
+			errorBuilder.WriteString("\n")
+		}
+	}
+
+	if errorBuilder.Len() == 0 {
+		// Return the response
+		return []byte(responseBuilder.String()), nil
+	} else {
+		// If there was an error, return it
+		return nil, fmt.Errorf("REPL error: %s", errorBuilder.String())
+	}
 }
 
 // CleanUp properly terminates the REPL process
 func (s *REPLServer) CleanUp() error {
-	// Close stdin to signal EOF to the process
-	if err := s.stdin.Close(); err != nil {
-		return fmt.Errorf("failed to close stdin: %w", err)
-	}
+	// Close stdin, ignore errors
+	s.stdin.Close()
 
-	if s.cmd.ProcessState == nil || !s.cmd.ProcessState.Exited() {
+	if s.cmd.ProcessState == nil {
 		if s.cmd.Process.Signal(os.Interrupt) != nil {
 			return fmt.Errorf("failed to send interrupt signal to REPL process")
 		}
 	}
 
 	// Wait for the process to exit
-	if err := s.cmd.Wait(); err != nil {
-		return fmt.Errorf("REPL process exited with error: %w", err)
+	if s.cmd.ProcessState == nil {
+		if err := s.cmd.Wait(); err != nil {
+			return fmt.Errorf("REPL process exited with error: %w", err)
+		}
 	}
 
 	return nil
@@ -257,8 +302,29 @@ func main() {
 		// Execute the command on the REPL
 		response, err := replServer.ExecuteCommand(body, timeout)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("REPL error: %v", err), http.StatusInternalServerError)
-			return
+			if _, ok := err.(*REPLDeathError); ok {
+				// If the REPL process died, we should clean up and restart it
+				log.Printf("REPL process died, restarting: %v", err)
+				if cleanupErr := replServer.CleanUp(); cleanupErr != nil {
+					log.Printf("Error cleaning up REPL: %v", cleanupErr)
+				}
+				replServer, err = NewREPLServer()
+				if err != nil {
+					log.Printf("Failed to restart REPL server: %v", err)
+					http.Error(w, "Failed to restart REPL server", http.StatusInternalServerError)
+					return
+				}
+				// Retry the command execution
+				response, err = replServer.ExecuteCommand(body, timeout)
+				if err != nil {
+					log.Printf("REPL command execution failed after restart: %v", err)
+					http.Error(w, fmt.Sprintf("REPL error after restart: %v", err), http.StatusInternalServerError)
+					return
+				}
+			} else {
+				http.Error(w, fmt.Sprintf("REPL error: %v", err), http.StatusInternalServerError)
+				return
+			}
 		}
 
 		// Set content type to JSON
