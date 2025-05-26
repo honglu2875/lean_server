@@ -273,7 +273,7 @@ func main() {
 	// Health check for /healthz endpoint
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		// Check if the REPL server is running
-		if replServer.cmd.ProcessState == nil || !replServer.cmd.ProcessState.Exited() {
+		if replServer.cmd.ProcessState == nil || replServer.cmd.ProcessState.Exited() {
 			http.Error(w, "REPL server is not running", http.StatusInternalServerError)
 			return
 		}
