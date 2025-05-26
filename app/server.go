@@ -179,7 +179,7 @@ func (s *REPLServer) CleanUp() error {
 		return fmt.Errorf("failed to close stdin: %w", err)
 	}
 
-	if s.cmd.ProcessState != nil && !s.cmd.ProcessState.Exited() {
+	if s.cmd.ProcessState == nil || !s.cmd.ProcessState.Exited() {
 		if s.cmd.Process.Signal(os.Interrupt) != nil {
 			return fmt.Errorf("failed to send interrupt signal to REPL process")
 		}
@@ -273,14 +273,16 @@ func main() {
 	// Health check for /healthz endpoint
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		// Check if the REPL server is running
-		if replServer.cmd.ProcessState == nil || replServer.cmd.ProcessState.Exited() {
-			http.Error(w, "REPL server is not running", http.StatusInternalServerError)
+		if replServer.cmd.ProcessState != nil && replServer.cmd.ProcessState.Exited() {
+			http.Error(w, "REPL server exited", http.StatusInternalServerError)
 			return
 		}
 		// Respond with a 200 OK status
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("OK")); err != nil {
 			log.Printf("Error writing health check response: %v", err)
+			http.Error(w, "Failed to write response", http.StatusInternalServerError)
+			return
 		}
 	})
 
