@@ -179,6 +179,12 @@ func (s *REPLServer) CleanUp() error {
 		return fmt.Errorf("failed to close stdin: %w", err)
 	}
 
+	if s.cmd.ProcessState != nil && !s.cmd.ProcessState.Exited() {
+		if s.cmd.Process.Signal(os.Interrupt) != nil {
+			return fmt.Errorf("failed to send interrupt signal to REPL process")
+		}
+	}
+
 	// Wait for the process to exit
 	if err := s.cmd.Wait(); err != nil {
 		return fmt.Errorf("REPL process exited with error: %w", err)
@@ -267,7 +273,7 @@ func main() {
 	// Health check for /healthz endpoint
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		// Check if the REPL server is running
-		if err := replServer.cmd.Process.Signal(os.Interrupt); err != nil {
+		if replServer.cmd.ProcessState == nil || !replServer.cmd.ProcessState.Exited() {
 			http.Error(w, "REPL server is not running", http.StatusInternalServerError)
 			return
 		}
